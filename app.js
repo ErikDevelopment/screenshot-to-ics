@@ -123,13 +123,12 @@ function mkEvent(title, start, end) {
 }
 
 // ---------------- Parser ----------------
-function normalizeText(t) {
-  return (t || "")
-    .replace(/[–—]/g, "-")
-    .replace(/\u00A0/g, " ")
-    .replace(/S/g, "5")
-    .replace(/O/g, "0")
-    .replace(/(\d)\s+(\d)/g, "$1$2"); // "17 45" -> "1745"
+function normalizeText(t){
+  return (t||"")
+    .replace(/[–—]/g,"-")
+    .replace(/\u00A0/g," ")
+    .replace(/S/g,"5")
+    .replace(/O/g,"0");
 }
 
 function detectMonthYear(text) {
