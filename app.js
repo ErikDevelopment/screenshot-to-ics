@@ -162,65 +162,49 @@ function detectMonthYear(text) {
 
 function parseShifts(rawText){
   const text = normalizeText(rawText);
-  const lines = text.split("\n").map(s => s.trim()).filter(Boolean);
 
+  // Monat/Jahr aus Header (Feb. 2026 etc.)
   const now = new Date();
   const { year: yAuto, month: mAuto } = detectMonthYear(text);
-  const baseYear = yAuto ?? now.getFullYear();
-  const baseMonth = mAuto ?? (now.getMonth() + 1); // 1-12
+  let currentYear = yAuto ?? now.getFullYear();
+  let currentMonth = mAuto ?? (now.getMonth() + 1); // 1-12
 
-  // Muster:
-  // "11 17:45 - 22:15"
-  // "MI. Kasse - Total Kriftel"
-  const reDayTime = /^(\d{1,2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/;
-  const reDowTitle = /^(Mo|Di|Mi|Do|Fr|Sa|So)\.?\s*(.*)$/i;
+  // Matcht:
+  // 11 17:45 - 22:15
+  // MI. Kasse - Total Kriftel
+  //
+  // Sehr tolerant: beliebige Spaces, optionaler Punkt, auch "MI.Kasse" ohne Space
+  const rePair = /(?:^|\n)\s*(\d{1,2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*\n\s*(Mo|Di|Mi|Do|Fr|Sa|So)\.?\s*(.*?)(?=\n|$)/gim;
 
-  let currentYear = baseYear;
-  let currentMonth = baseMonth;
-
-  // Für Monatswechsel erkennen wir, wenn der Tag "kleiner" wird (z.B. 25 -> 01)
   let lastDaySeen = 0;
-
   const events = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    // Abschnitts-Header wie "Feb. 2026 - KW7" darf ignoriert werden,
-    // detectMonthYear hat uns baseMonth/baseYear schon gegeben.
-    const m1 = lines[i].match(reDayTime);
-    if (!m1) continue;
+  let m;
+  while ((m = rePair.exec(text)) !== null) {
+    const day = Number(m[1]);
+    const startStr = m[2];
+    const endStr = m[3];
+    const title = (m[5] || "Dienst").trim() || "Dienst";
 
-    const day = Number(m1[1]);
-    const startStr = m1[2];
-    const endStr = m1[3];
-
-    // Monatswechsel: wenn Tag wieder klein wird, Monat +1
+    // Monatswechsel erkennen (25 -> 01)
     if (lastDaySeen && day < lastDaySeen) {
       currentMonth += 1;
       if (currentMonth > 12) { currentMonth = 1; currentYear += 1; }
     }
     lastDaySeen = day;
 
-    const line2 = lines[i + 1] || "";
-    const m2 = line2.match(reDowTitle);
-
-    // Titel ist alles nach dem Wochentag, sonst fallback
-    const title = m2 ? (m2[2]?.trim() || "Dienst") : "Dienst";
-
     const start = toDateTimeLocal(currentYear, currentMonth, day, startStr);
     const end = toDateTimeLocal(currentYear, currentMonth, day, endStr);
-
-    // Schicht über Mitternacht
     if (end < start) end.setDate(end.getDate() + 1);
 
     events.push(mkEvent(title, start, end));
-
-    // Wir haben 2 Zeilen verbraucht, also i++ überspringen
-    i += 1;
   }
+
+  // Debug (optional): in der Browser-Konsole sehen wie viele Matches gefunden wurden
+  console.log("parseShifts matches:", events.length);
 
   return events;
 }
-
 function toDateTimeLocal(y, m, d, hhmm) {
   const [hh, mm] = hhmm.split(":").map(Number);
   return new Date(y, m - 1, d, hh, mm, 0);
