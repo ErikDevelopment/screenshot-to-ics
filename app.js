@@ -165,39 +165,47 @@ function detectMonthYear(text) {
 
 function parseShifts(rawText){
   const text = normalizeText(rawText);
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
 
   const now = new Date();
   const { year: yAuto, month: mAuto } = detectMonthYear(text);
+
   let currentYear = yAuto ?? now.getFullYear();
   let currentMonth = mAuto ?? (now.getMonth() + 1);
-
-  // Sehr tolerant:
-  // - akzeptiert \n oder \r\n (normalizeText sollte das schon vereinheitlichen)
-  // - Wochentag egal ob "MI.", "Mi.", "So." usw.
-  // - erlaubt beliebige Spaces / Tabs zwischen allem
-  // - erlaubt auch "So.  Kasse ..." (doppelte Spaces)
-  const rePair =
-    /(?:^|\n)\s*(\d{1,2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*\n\s*(mo|di|mi|do|fr|sa|so)\s*\.?\s*(.+?)(?=\n|$)/gi;
 
   let lastDaySeen = 0;
   const events = [];
 
-  let m;
-  while ((m = rePair.exec(text)) !== null) {
-    const day = Number(m[1]);
-    const startStr = m[2];
-    const endStr = m[3];
-    const title = (m[5] || "Dienst").trim();
+  const reTimeLine = /^(\d{1,2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/;
+  const reDowLine  = /^(mo|di|mi|do|fr|sa|so)\.?\s*(.*)$/i;
+
+  for (let i = 0; i < lines.length; i++) {
+
+    const timeMatch = lines[i].match(reTimeLine);
+    if (!timeMatch) continue;
+
+    const day = Number(timeMatch[1]);
+    const startStr = timeMatch[2];
+    const endStr = timeMatch[3];
 
     // Monatswechsel (25 -> 01)
     if (lastDaySeen && day < lastDaySeen) {
-      currentMonth += 1;
-      if (currentMonth > 12) { currentMonth = 1; currentYear += 1; }
+      currentMonth++;
+      if (currentMonth > 12) {
+        currentMonth = 1;
+        currentYear++;
+      }
     }
     lastDaySeen = day;
 
+    const nextLine = lines[i + 1] || "";
+    const dowMatch = nextLine.match(reDowLine);
+
+    const title = dowMatch ? dowMatch[2].trim() : "Dienst";
+
     const start = toDateTimeLocal(currentYear, currentMonth, day, startStr);
     const end = toDateTimeLocal(currentYear, currentMonth, day, endStr);
+
     if (end < start) end.setDate(end.getDate() + 1);
 
     events.push(mkEvent(title, start, end));
@@ -205,7 +213,6 @@ function parseShifts(rawText){
 
   return events;
 }
-
 function toDateTimeLocal(y, m, d, hhmm) {
   const [hh, mm] = hhmm.split(":").map(Number);
   return new Date(y, m - 1, d, hh, mm, 0);
