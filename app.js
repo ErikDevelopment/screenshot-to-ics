@@ -124,11 +124,14 @@ function mkEvent(title, start, end) {
 
 // ---------------- Parser ----------------
 function normalizeText(t){
-  return (t||"")
-    .replace(/[–—]/g,"-")
-    .replace(/\u00A0/g," ")
-    .replace(/S/g,"5")
-    .replace(/O/g,"0");
+  return (t || "")
+    .replace(/\r\n/g, "\n")     // WICHTIG: Windows -> Unix
+    .replace(/\r/g, "\n")
+    .replace(/[–—]/g, "-")
+    .replace(/\u00A0/g, " ")
+    .replace(/S/g, "5")
+    .replace(/O/g, "0")
+    .replace(/[ \t]+/g, " ");  // Mehrfachspaces glätten
 }
 
 function detectMonthYear(text) {
@@ -163,18 +166,17 @@ function detectMonthYear(text) {
 function parseShifts(rawText){
   const text = normalizeText(rawText);
 
-  // Monat/Jahr aus Header (Feb. 2026 etc.)
   const now = new Date();
   const { year: yAuto, month: mAuto } = detectMonthYear(text);
   let currentYear = yAuto ?? now.getFullYear();
-  let currentMonth = mAuto ?? (now.getMonth() + 1); // 1-12
+  let currentMonth = mAuto ?? (now.getMonth() + 1);
 
-  // Matcht:
+  // Matcht Block:
   // 11 17:45 - 22:15
   // MI. Kasse - Total Kriftel
-  //
-  // Sehr tolerant: beliebige Spaces, optionaler Punkt, auch "MI.Kasse" ohne Space
-  const rePair = /(?:^|\n)\s*(\d{1,2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*\n\s*(Mo|Di|Mi|Do|Fr|Sa|So)\.?\s*(.*?)(?=\n|$)/gim;
+  // (tolerant für Spaces, Punkt, und Zeilenenden)
+  const rePair =
+    /(?:^|\n)\s*(\d{1,2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*\n\s*(Mo|Di|Mi|Do|Fr|Sa|So)\.?\s*(.*?)(?=\n|$)/gim;
 
   let lastDaySeen = 0;
   const events = [];
@@ -186,7 +188,7 @@ function parseShifts(rawText){
     const endStr = m[3];
     const title = (m[5] || "Dienst").trim() || "Dienst";
 
-    // Monatswechsel erkennen (25 -> 01)
+    // Monatswechsel (25 -> 01)
     if (lastDaySeen && day < lastDaySeen) {
       currentMonth += 1;
       if (currentMonth > 12) { currentMonth = 1; currentYear += 1; }
@@ -200,11 +202,10 @@ function parseShifts(rawText){
     events.push(mkEvent(title, start, end));
   }
 
-  // Debug (optional): in der Browser-Konsole sehen wie viele Matches gefunden wurden
-  console.log("parseShifts matches:", events.length);
-
+  console.log("parseShifts events:", events); // <- zum Prüfen
   return events;
 }
+
 function toDateTimeLocal(y, m, d, hhmm) {
   const [hh, mm] = hhmm.split(":").map(Number);
   return new Date(y, m - 1, d, hh, mm, 0);
